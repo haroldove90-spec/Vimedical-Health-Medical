@@ -29,6 +29,8 @@ export default function App() {
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<{ id: string; date: string; type: string; result: string }[]>([]);
+  const [reminders, setReminders] = useState<{medicamento: string, dosis: string, hora: string}[]>([]);
+  const [currentView, setCurrentView] = useState<'main' | 'perfil' | 'historial' | 'ajustes' | 'calendario'>('main');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -37,7 +39,36 @@ export default function App() {
     if (savedHistory) {
       setHistory(JSON.parse(savedHistory));
     }
+    const savedReminders = localStorage.getItem('vimedical_reminders');
+    if (savedReminders) {
+      setReminders(JSON.parse(savedReminders));
+    }
   }, []);
+
+  const saveReminder = (reminder: {medicamento: string, dosis: string, hora: string}) => {
+    setReminders(prev => {
+      const updated = [...prev, reminder];
+      localStorage.setItem('vimedical_reminders', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleFunctionCalls = (calls: any[]) => {
+    calls.forEach(call => {
+      console.log("Ejecutando función:", call.name, call.args);
+      
+      if (call.name === 'navegar_a_pantalla') {
+        setCurrentView(call.args.pantalla_id);
+      } else if (call.name === 'abrir_camara_analisis') {
+        // En una app real, aquí abriríamos la cámara nativa
+        // Por ahora simulamos con un mensaje
+        setError(`Acción: Abriendo cámara para ${call.args.tipo}. (Simulado)`);
+        setTimeout(() => setError(null), 3000);
+      } else if (call.name === 'programar_recordatorio') {
+        saveReminder(call.args);
+      }
+    });
+  };
 
   const saveToHistory = (type: string, result: string) => {
     const newEntry = {
@@ -102,16 +133,20 @@ export default function App() {
       }
 
       const result = await analyzeClinicalInput(inputText, imageData);
-      setAnalysisResult(result);
+      setAnalysisResult(result.text);
+
+      if (result.functionCalls) {
+        handleFunctionCalls(result.functionCalls);
+      }
 
       // Determine type for history
-      let type = 'Consulta General';
+      let type = result.functionCalls ? 'Acción IA' : 'Consulta General';
       const lowerText = inputText.toLowerCase();
       if (lowerText.includes('herida') || lowerText.includes('visión')) type = 'Visión Médica';
       else if (lowerText.includes('receta') || lowerText.includes('digitaliza')) type = 'Digitalización';
       else if (lowerText.includes('triaje') || lowerText.includes('síntomas')) type = 'Triaje IA';
       
-      saveToHistory(type, result);
+      saveToHistory(type, result.text || (result.functionCalls ? "Acción ejecutada" : ""));
     } catch (err) {
       console.error(err);
       setError('Ocurrió un error durante el análisis. Por favor, intente de nuevo.');
@@ -155,7 +190,13 @@ export default function App() {
       {/* Header */}
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200">
         <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <button 
+            onClick={() => {
+              setCurrentView('main');
+              setAnalysisResult(null);
+            }}
+            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+          >
             <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200">
               <Activity className="text-white w-6 h-6" />
             </div>
@@ -163,8 +204,24 @@ export default function App() {
               <h1 className="font-bold text-lg leading-tight text-slate-800">Vimedical Health</h1>
               <p className="text-[10px] uppercase tracking-wider font-semibold text-blue-600">Clinical Intelligence</p>
             </div>
-          </div>
+          </button>
           <div className="flex items-center gap-4">
+            <nav className="hidden md:flex items-center gap-1 mr-4">
+              {['perfil', 'historial', 'ajustes', 'calendario'].map((view) => (
+                <button
+                  key={view}
+                  onClick={() => setCurrentView(view as any)}
+                  className={cn(
+                    "px-3 py-1.5 text-xs font-bold uppercase tracking-widest rounded-lg transition-all",
+                    currentView === view 
+                      ? "bg-blue-50 text-blue-600" 
+                      : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+                  )}
+                >
+                  {view}
+                </button>
+              ))}
+            </nav>
             {history.length > 0 && (
               <button 
                 onClick={() => {
@@ -184,8 +241,67 @@ export default function App() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-8 pb-32">
+        {currentView !== 'main' && (
+          <motion.div 
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="mb-8"
+          >
+            <button 
+              onClick={() => setCurrentView('main')}
+              className="flex items-center gap-2 text-sm font-bold text-blue-600 hover:gap-3 transition-all"
+            >
+              <ChevronRight className="w-4 h-4 rotate-180" />
+              Volver al Inicio
+            </button>
+            <div className="mt-6 p-12 bg-white rounded-3xl border border-dashed border-slate-200 text-center">
+              <h2 className="text-2xl font-bold text-slate-800 mb-2 capitalize">{currentView}</h2>
+              <p className="text-slate-500">Esta sección está en desarrollo. Pronto podrás ver tus datos aquí.</p>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Reminders Section */}
+        {reminders.length > 0 && currentView === 'main' && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-8 bg-blue-600 rounded-3xl p-6 text-white shadow-xl shadow-blue-100"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold flex items-center gap-2">
+                <Activity className="w-5 h-5" />
+                Próximos Recordatorios
+              </h3>
+              <button 
+                onClick={() => {
+                  localStorage.removeItem('vimedical_reminders');
+                  setReminders([]);
+                }}
+                className="text-[10px] font-bold uppercase tracking-widest opacity-60 hover:opacity-100"
+              >
+                Limpiar
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {reminders.map((rem, idx) => (
+                <div key={idx} className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 flex items-center justify-between border border-white/10">
+                  <div>
+                    <p className="font-bold text-sm">{rem.medicamento}</p>
+                    <p className="text-xs opacity-80">{rem.dosis}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-mono font-bold">{rem.hora}</p>
+                    <p className="text-[10px] uppercase tracking-tighter opacity-60">Hoy</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
         {/* Welcome Section */}
-        {!analysisResult && !isAnalyzing && (
+        {!analysisResult && !isAnalyzing && currentView === 'main' && (
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}

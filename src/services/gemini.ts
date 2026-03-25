@@ -1,20 +1,66 @@
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse, Type, FunctionDeclaration } from "@google/genai";
 
 const MODEL_NAME = "gemini-2.5-flash-preview-12-2025"; // Using a recent stable-ish preview for multimodal
 
 export interface AnalysisResult {
   text: string;
+  functionCalls?: any[];
 }
+
+const navegarAPantallaDeclaration: FunctionDeclaration = {
+  name: "navegar_a_pantalla",
+  description: "Navega al usuario a una sección específica de la app.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      pantalla_id: {
+        type: Type.STRING,
+        description: "ID de la pantalla: 'perfil', 'historial', 'ajustes', 'calendario'.",
+        enum: ['perfil', 'historial', 'ajustes', 'calendario']
+      }
+    },
+    required: ["pantalla_id"]
+  }
+};
+
+const abrirCamaraAnalisisDeclaration: FunctionDeclaration = {
+  name: "abrir_camara_analisis",
+  description: "Activa la cámara para tomar una foto que será analizada.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      tipo: {
+        type: Type.STRING,
+        description: "Tipo de análisis: 'herida', 'documento' o 'generico'.",
+        enum: ['herida', 'documento', 'generico']
+      }
+    },
+    required: ["tipo"]
+  }
+};
+
+const programarRecordatorioDeclaration: FunctionDeclaration = {
+  name: "programar_recordatorio",
+  description: "Crea un recordatorio en la base de datos de la app.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      medicamento: { type: Type.STRING, description: "Nombre del medicamento." },
+      dosis: { type: Type.STRING, description: "Dosis recomendada." },
+      hora: { type: Type.STRING, description: "Hora del recordatorio (ej: 08:00)." }
+    },
+    required: ["medicamento", "dosis", "hora"]
+  }
+};
 
 export async function analyzeClinicalInput(
   text: string,
   image?: { data: string; mimeType: string }
-): Promise<string> {
+): Promise<AnalysisResult> {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
   const systemInstruction = `
-    Actúa como el motor de inteligencia clínica para la plataforma "Vimedical Health". 
-    Tu función es procesar entradas multimodales (texto e imágenes) para asistir en la gestión médica.
+    Eres el motor de IA de la aplicación "Vimedical Health". Tu función es interactuar con el usuario y determinar cuándo es necesario llamar a una función específica de la aplicación para asistirlo.
 
     ### DIRECTRICES DE ANÁLISIS:
     1. **Visión Médica:** Al recibir fotos de heridas o piel, describe:
@@ -28,6 +74,7 @@ export async function analyzeClinicalInput(
     - Usa un tono profesional, empático y conciso.
     - Estructura siempre con Markdown (Encabezados y Bullet points).
     - **IMPORTANTE:** Al final de cada análisis clínico, añade una sección de "Siguientes Pasos Sugeridos".
+    - Si detectas que el usuario necesita una acción específica (navegar, cámara, recordatorio), usa las herramientas disponibles.
 
     ### RESTRICCIONES DE SEGURIDAD (Inviolables):
     - Nunca digas "Usted tiene [Enfermedad]". Di: "Los hallazgos son compatibles con..." o "Se observa una tendencia hacia...".
@@ -50,8 +97,18 @@ export async function analyzeClinicalInput(
     contents: [{ parts }],
     config: {
       systemInstruction,
+      tools: [{
+        functionDeclarations: [
+          navegarAPantallaDeclaration,
+          abrirCamaraAnalisisDeclaration,
+          programarRecordatorioDeclaration
+        ]
+      }]
     },
   });
 
-  return response.text || "No se pudo generar un análisis.";
+  return {
+    text: response.text || "",
+    functionCalls: response.functionCalls
+  };
 }
