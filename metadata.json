@@ -1,0 +1,5 @@
+{
+  "name": "InSight Health Platform",
+  "description": "Plataforma de inteligencia clínica para el análisis de heridas, digitalización de recetas y triaje médico asistido por IA.",
+  "requestFramePermissions": ["camera"]
+}
