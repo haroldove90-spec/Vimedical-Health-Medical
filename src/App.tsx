@@ -28,8 +28,30 @@ export default function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<{ id: string; date: string; type: string; result: string }[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const savedHistory = localStorage.getItem('vimedical_history');
+    if (savedHistory) {
+      setHistory(JSON.parse(savedHistory));
+    }
+  }, []);
+
+  const saveToHistory = (type: string, result: string) => {
+    const newEntry = {
+      id: Date.now().toString(),
+      date: new Date().toLocaleString(),
+      type,
+      result
+    };
+    setHistory(prev => {
+      const updated = [newEntry, ...prev].slice(0, 5);
+      localStorage.setItem('vimedical_history', JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -81,11 +103,50 @@ export default function App() {
 
       const result = await analyzeClinicalInput(inputText, imageData);
       setAnalysisResult(result);
+
+      // Determine type for history
+      let type = 'Consulta General';
+      const lowerText = inputText.toLowerCase();
+      if (lowerText.includes('herida') || lowerText.includes('visión')) type = 'Visión Médica';
+      else if (lowerText.includes('receta') || lowerText.includes('digitaliza')) type = 'Digitalización';
+      else if (lowerText.includes('triaje') || lowerText.includes('síntomas')) type = 'Triaje IA';
+      
+      saveToHistory(type, result);
     } catch (err) {
       console.error(err);
       setError('Ocurrió un error durante el análisis. Por favor, intente de nuevo.');
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  const handleToolClick = (tool: 'vision' | 'digital' | 'triaje') => {
+    switch (tool) {
+      case 'vision':
+        setInputText('Por favor, realiza un análisis de visión médica de esta imagen de herida/piel. Describe tejido, bordes y signos de infección.');
+        fileInputRef.current?.click();
+        break;
+      case 'digital':
+        setInputText('Extrae los datos de esta receta médica: Nombre del paciente, Medicamentos, Dosis y Próxima cita.');
+        fileInputRef.current?.click();
+        break;
+      case 'triaje':
+        setInputText('Realiza un triaje basado en los siguientes síntomas: [Describa aquí los síntomas, ej: fiebre de 39°C y dolor abdominal agudo]');
+        break;
+    }
+  };
+
+  const loadExample = (type: 'herida' | 'receta' | 'emergencia') => {
+    switch (type) {
+      case 'herida':
+        setInputText('Analiza esta herida: Se observa una lesión en el miembro inferior derecho, con presencia de tejido amarillento y bordes enrojecidos. El paciente reporta dolor local.');
+        break;
+      case 'receta':
+        setInputText('Digitaliza esta información de receta: Paciente Juan Pérez. Paracetamol 500mg cada 8 horas por 3 días. Cita de control el 15 de abril.');
+        break;
+      case 'emergencia':
+        setInputText('El paciente presenta dolor intenso en el pecho que se irradia al brazo izquierdo y dificultad para respirar desde hace 10 minutos.');
+        break;
     }
   };
 
@@ -99,11 +160,22 @@ export default function App() {
               <Activity className="text-white w-6 h-6" />
             </div>
             <div>
-              <h1 className="font-bold text-lg leading-tight text-slate-800">InSight Health</h1>
+              <h1 className="font-bold text-lg leading-tight text-slate-800">Vimedical Health</h1>
               <p className="text-[10px] uppercase tracking-wider font-semibold text-blue-600">Clinical Intelligence</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
+            {history.length > 0 && (
+              <button 
+                onClick={() => {
+                  localStorage.removeItem('vimedical_history');
+                  setHistory([]);
+                }}
+                className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-red-500 transition-colors"
+              >
+                Limpiar Historial
+              </button>
+            )}
             <button className="p-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors">
               <Info className="w-5 h-5" />
             </button>
@@ -117,25 +189,85 @@ export default function App() {
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-12 text-center"
+            className="space-y-12"
           >
-            <h2 className="text-3xl font-bold text-slate-800 mb-4">Asistente Clínico Inteligente</h2>
-            <p className="text-slate-600 max-w-xl mx-auto">
-              Analice heridas, digitalice recetas médicas o realice un triaje rápido mediante inteligencia artificial multimodal.
-            </p>
+            <div className="text-center">
+              <h2 className="text-3xl font-bold text-slate-800 mb-4">Asistente Clínico Inteligente</h2>
+              <p className="text-slate-600 max-w-xl mx-auto">
+                Seleccione una herramienta para comenzar el análisis clínico asistido por IA.
+              </p>
+            </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-12">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {[
-                { icon: Camera, title: "Visión Médica", desc: "Análisis de tejidos y signos de infección en heridas." },
-                { icon: FileText, title: "Digitalización", desc: "Extracción de datos de recetas y documentos." },
-                { icon: Stethoscope, title: "Triaje IA", desc: "Clasificación de urgencia basada en síntomas." }
-              ].map((item, i) => (
-                <div key={i} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-                  <item.icon className="w-8 h-8 text-blue-600 mb-4" />
+                { id: 'vision', icon: Camera, title: "Visión Médica", desc: "Análisis de tejidos y signos de infección en heridas.", color: "bg-blue-50 text-blue-600 border-blue-100" },
+                { id: 'digital', icon: FileText, title: "Digitalización", desc: "Extracción de datos de recetas y documentos.", color: "bg-emerald-50 text-emerald-600 border-emerald-100" },
+                { id: 'triaje', icon: Stethoscope, title: "Triaje IA", desc: "Clasificación de urgencia basada en síntomas.", color: "bg-purple-50 text-purple-600 border-purple-100" }
+              ].map((item) => (
+                <button 
+                  key={item.id} 
+                  onClick={() => handleToolClick(item.id as any)}
+                  className={cn(
+                    "p-6 rounded-2xl border text-left transition-all hover:scale-[1.02] active:scale-[0.98] shadow-sm hover:shadow-md",
+                    item.color,
+                    "bg-white border-slate-200"
+                  )}
+                >
+                  <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center mb-4", item.color.split(' ')[0])}>
+                    <item.icon className="w-6 h-6" />
+                  </div>
                   <h3 className="font-bold text-slate-800 mb-2">{item.title}</h3>
                   <p className="text-sm text-slate-500">{item.desc}</p>
-                </div>
+                </button>
               ))}
+            </div>
+
+            {/* Recent Activity */}
+            {history.length > 0 && (
+              <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm">
+                <h4 className="text-sm font-bold text-slate-800 mb-6 flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-blue-600" />
+                  Actividad Reciente
+                </h4>
+                <div className="space-y-4">
+                  {history.map((entry) => (
+                    <button 
+                      key={entry.id}
+                      onClick={() => setAnalysisResult(entry.result)}
+                      className="w-full flex items-center justify-between p-4 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100 group"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center group-hover:bg-white transition-colors">
+                          {entry.type === 'Visión Médica' && <Camera className="w-5 h-5 text-blue-600" />}
+                          {entry.type === 'Digitalización' && <FileText className="w-5 h-5 text-emerald-600" />}
+                          {entry.type === 'Triaje IA' && <Stethoscope className="w-5 h-5 text-purple-600" />}
+                          {entry.type === 'Consulta General' && <Activity className="w-5 h-5 text-slate-600" />}
+                        </div>
+                        <div className="text-left">
+                          <p className="font-bold text-slate-800 text-sm">{entry.type}</p>
+                          <p className="text-xs text-slate-400">{entry.date}</p>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-500 transition-colors" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="text-center">
+              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6">Pruebas Rápidas (Ejemplos)</h4>
+              <div className="flex flex-wrap justify-center gap-3">
+                <button onClick={() => loadExample('herida')} className="px-4 py-2 bg-white border border-slate-200 rounded-full text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+                  🩹 Analizar Herida
+                </button>
+                <button onClick={() => loadExample('receta')} className="px-4 py-2 bg-white border border-slate-200 rounded-full text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+                  📄 Digitalizar Receta
+                </button>
+                <button onClick={() => loadExample('emergencia')} className="px-4 py-2 bg-red-50 border border-red-100 rounded-full text-sm font-medium text-red-600 hover:bg-red-100 transition-colors">
+                  🚨 Caso de Emergencia
+                </button>
+              </div>
             </div>
           </motion.div>
         )}
@@ -303,7 +435,7 @@ export default function App() {
             </div>
           </form>
           <p className="text-[10px] text-center text-slate-400 mt-3 font-medium uppercase tracking-widest">
-            InSight Health Platform • Motor de Inteligencia Clínica
+            Vimedical Health • Motor de Inteligencia Clínica
           </p>
         </div>
       </div>

@@ -13,7 +13,7 @@ export async function analyzeClinicalInput(
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
   const systemInstruction = `
-    Actúa como el motor de inteligencia clínica para la plataforma "InSight Health Platform". 
+    Actúa como el motor de inteligencia clínica para la plataforma "Vimedical Health". 
     Tu función es procesar entradas multimodales (texto e imágenes) para asistir en la gestión médica.
 
     ### DIRECTRICES DE ANÁLISIS:
